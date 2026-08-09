@@ -1,0 +1,327 @@
+#PREPROCESSING
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import tensorflow as tf
+import numpy as np
+import random
+import pandas as pd
+import seaborn as sns
+from nltk.corpus import stopwords
+from sklearn.feature_extraction.text import TfidfVectorizer
+from keras.models import Sequential
+from keras.layers import Dense, Conv1D, Flatten
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, Conv1D, GlobalMaxPooling1D, Dense
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import CategoricalCrossentropy
+from tensorflow.keras.metrics import Accuracy
+from keras.models import Sequential
+from keras.layers import Embedding, LSTM, Dense
+from sklearn.model_selection import train_test_split
+from keras.models import Sequential
+from keras.layers import Embedding, Conv1D, GlobalMaxPooling1D, Dense ,LSTM
+from sklearn.model_selection import train_test_split
+from sklearn.metrics.pairwise import cosine_similarity
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from nltk.tokenize import word_tokenize
+from wordcloud import WordCloud
+from wordcloud import STOPWORDS
+import nltk
+from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import classification_report
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('drugs_side_effects_drugs_com.csv')
+df.head()
+df.columns
+df.info()
+df.describe()
+df.shape
+#performing EDA
+
+WordCloud = WordCloud(width=800, height=400, random_state=21, max_font_size=110).generate(str(df['side_effects']))
+plt.figure(figsize=(10, 7))
+plt.imshow(WordCloud, interpolation="bilinear")
+plt.axis('off')
+#fill the missing values of side_effects with 'No Side Effects'
+df['side_effects'] = df['side_effects'].fillna('No Side Effects')
+df.isnull().sum()
+#remove special characters emojis and punctuations
+df['side_effects'] = df['side_effects'].str.replace(r'[^\w\s]', '')
+df.head()
+#consider the first 3 columns for the analysis
+df = df[['drug_name', 'side_effects', 'medical_condition']]
+#save the cleaned data
+df.to_csv('drugs_side_effects.csv', index=False)
+
+
+df= pd.read_csv('drugs_side_effects.csv')
+df = df[['drug_name','side_effects']]
+df = df.dropna()
+# TF-IDF on side effects
+tfidf = TfidfVectorizer(stop_words='english')
+tfidf_matrix = tfidf.fit_transform(df['side_effects'])
+print(tfidf_matrix.shape)
+print(tfidf_matrix)
+# Label encoding for drug names
+df['drug_name'] = df['drug_name'].astype('category')
+df['drug_name'] = df['drug_name'].cat.codes
+
+# Add TF-IDF vectors to dataframe
+tfidf_matrix = tfidf_matrix.toarray()
+tfidf_matrix = pd.DataFrame(tfidf_matrix)
+df = pd.concat([df, tfidf_matrix], axis=1)
+print(df.head())
+#apply the cosine similarity
+cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+print(cosine_sim)
+
+
+#LSTM APPROACH
+
+
+# Load the dataset
+data = pd.read_csv('drugs_side_effects.csv')
+
+# Split the data into drug names and side effects
+drug_names = data['drug_name'].values
+side_effects=data['side_effects'].values
+nltk.download('punkt')
+nltk.download('stopwords')
+k=[]
+for i in range(0,len(side_effects)):
+  k.append(word_tokenize(side_effects[i]))
+from nltk.corpus import stopwords
+l=[]
+for i in range(0,len(k)):
+  t=[]
+  for word in k[i]:
+    if word not in stopwords.words('english') and len(word)!=1:
+      t.append(word)
+  l.append(t)
+# Tokenize the drug names and side effects
+tokenizer_drug = Tokenizer()
+tokenizer_drug.fit_on_texts(drug_names)
+
+tokenizer_side = Tokenizer()
+tokenizer_side.fit_on_texts(l)
+#print(side_effects)
+# Convert the drug names and side effects to sequences
+drug_sequences = tokenizer_drug.texts_to_sequences(drug_names)
+side_effects_sequences = tokenizer_side.texts_to_sequences(l)
+print(side_effects_sequences)
+# Pad the sequences to a maximum length
+maxLen=0
+for i in range(0,len(l)):
+  if len(l[i])>maxLen:
+    maxLen=len(l[i])
+drug_data = pad_sequences(drug_sequences, maxlen=1)
+print(drug_data)
+side_effects_data = pad_sequences(side_effects_sequences, maxlen=maxLen)
+print(side_effects_data)
+# Convert the side effects sequences to one-hot encoding
+num_classes = len(tokenizer_side.word_index) + 1
+side_effects_labels = np.zeros((len(data), num_classes))
+for i, label in enumerate(side_effects_sequences):
+    side_effects_labels[i, label] = 1
+print(side_effects_labels)
+
+
+X_train_val, X_test, y_train_val, y_test = train_test_split(drug_data, side_effects_labels, test_size=0.2, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.10, random_state=42)
+# Build the RNN model
+model = Sequential()
+model.add(Embedding(input_dim=len(tokenizer_drug.word_index) + 1, output_dim=64, input_length=100))
+model.add(LSTM(64))
+model.add(Dense(num_classes, activation='sigmoid'))
+
+# Compile the model
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+# Train the model
+history=model.fit(X_train, y_train, batch_size=32, epochs=4, validation_data=(X_val, y_val))
+test_loss, test_accuracy = model.evaluate(X_test, y_test)
+print("Test accuracy:", test_accuracy)
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+# Predict the probabilities for the test set
+y_pred_proba = model.predict(X_test)
+
+# Convert the binary matrices to class labels
+y_test_labels = np.argmax(y_test, axis=1)
+y_pred_labels = np.argmax(y_pred_proba, axis=1)
+
+# Compute precision, recall, and F1 score
+precision = precision_score(y_test_labels, y_pred_labels, average='weighted')
+recall = recall_score(y_test_labels, y_pred_labels, average='weighted')
+f1 = f1_score(y_test_labels, y_pred_labels, average='weighted')
+
+# Print the results
+print("Precision:", precision)
+print("Recall:", recall)
+print("F1 score:", f1)
+print(classification_report(y_test_labels, y_pred_labels))
+
+# Convert y_test to binary targets
+y_test_binary = np.argmax(y_test, axis=1)
+
+# Predict the side effects for the test set
+y_pred = model.predict(X_test)
+y_pred_classes = np.argmax(y_pred, axis=1)
+print("Confusion matrix:")
+# Compute the confusion matrix
+cm = confusion_matrix(y_test_binary, y_pred_classes)
+plt.figure(figsize=(10, 7))
+sns.heatmap(cm, annot=True, fmt="d")
+plt.xlabel('Predicted')
+plt.ylabel('Truth')
+plt.show()
+def predict_side_effects(drug_name, model, tokenizer_drug, maxlen, num_classes):
+    # Tokenize the drug name
+    drug_sequence = tokenizer_drug.texts_to_sequences([drug_name])
+    drug_data = pad_sequences(drug_sequence, maxlen=maxlen)
+
+    # Predict the side effects
+    predictions = model.predict(drug_data)
+
+    # Convert the predictions to labels
+    predicted_labels = []
+    for i in range(len(predictions[0])):
+        if predictions[0][i] > 0.4:
+            predicted_labels.append(tokenizer_side.index_word[i])
+
+    return predicted_labels
+
+# Example usage
+drug_name = "doxycycline"
+predicted_labels = predict_side_effects(drug_name, model, tokenizer_drug, 100, num_classes)
+print("Predicted side effects for", drug_name, ":", sorted(predicted_labels))
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+plt.figure(figsize=(8, 8))
+plt.subplot(2, 1, 1)
+plt.plot(acc, label='Training Accuracy')
+plt.plot(val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.ylabel('Accuracy')
+plt.ylim([min(plt.ylim()),1])
+plt.title('Training and Validation Accuracy')
+plt.subplot(2, 1, 2)
+plt.plot(loss, label='Training Loss')
+plt.plot(val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.ylabel('Cross Entropy')
+plt.title('Training and Validation Loss')
+plt.xlabel('epoch')
+plt.show()
+
+#CNN APPROACH
+
+# Load the dataset
+data = pd.read_csv('drugs_side_effects.csv')
+
+# Split the data into drug names and side effects
+drug_names = data['drug_name'].values
+side_effects=data['side_effects'].values
+nltk.download('punkt')
+nltk.download('stopwords')
+k=[]
+for i in range(0,len(side_effects)):
+  k.append(word_tokenize(side_effects[i]))
+l=[]
+for i in range(0,len(k)):
+  t=[]
+  for word in k[i]:
+    if word not in stopwords.words('english') and len(word)!=1:
+      t.append(word)
+  l.append(t)
+# Tokenize the drug names and side effects
+tokenizer_drug = Tokenizer()
+tokenizer_drug.fit_on_texts(drug_names)
+
+tokenizer_side = Tokenizer()
+tokenizer_side.fit_on_texts(l)
+#print(side_effects)
+# Convert the drug names and side effects to sequences
+drug_sequences = tokenizer_drug.texts_to_sequences(drug_names)
+side_effects_sequences = tokenizer_side.texts_to_sequences(l)
+print(side_effects_sequences)
+# Pad the sequences to a maximum length
+maxLen=0
+for i in range(0,len(l)):
+  if len(l[i])>maxLen:
+    maxLen=len(l[i])
+drug_data = pad_sequences(drug_sequences, maxlen=1)
+print(drug_data)
+side_effects_data = pad_sequences(side_effects_sequences, maxlen=maxLen)
+print(side_effects_data)
+# Convert the side effects sequences to one-hot encoding
+num_classes = len(tokenizer_side.word_index) + 1
+side_effects_labels = np.zeros((len(data), num_classes))
+for i, label in enumerate(side_effects_sequences):
+    side_effects_labels[i, label] = 1
+print(side_effects_labels)
+
+
+X_train_val, X_test, y_train_val, y_test = train_test_split(drug_data, side_effects_labels, test_size=0.1, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.10, random_state=42)
+
+# Build the CNN model
+model = Sequential()
+model.add(Embedding(input_dim=len(tokenizer_drug.word_index) + 1, output_dim=64, input_length=1200))
+model.add(Conv1D(filters=64, kernel_size=1, activation='relu'))
+model.add(GlobalMaxPooling1D())
+model.add(Dense(num_classes, activation='sigmoid'))
+
+# Compile the model
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+# Train the model
+history = model.fit(X_train, y_train, batch_size=32, epochs=4, validation_data=(X_val, y_val))
+test_loss, test_accuracy = model.evaluate(X_test, y_test)
+print("Test accuracy:", test_accuracy)
+
+# Predict the probabilities for the test set
+y_pred_proba = model.predict(X_test)
+
+# Convert the binary matrices to class labels
+y_test_labels = np.argmax(y_test, axis=1)
+y_pred_labels = np.argmax(y_pred_proba, axis=1)
+print(classification_report(y_test_labels, y_pred_labels))
+# Compute precision, recall, and F1 score
+precision = precision_score(y_test_labels, y_pred_labels, average='weighted')
+recall = recall_score(y_test_labels, y_pred_labels, average='weighted')
+f1 = f1_score(y_test_labels, y_pred_labels, average='weighted')
+
+# Print the results
+print("Precision:", precision)
+print("Recall:", recall)
+print("F1 score:", f1)
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+plt.figure(figsize=(8, 8))
+plt.subplot(2, 1, 1)
+plt.plot(acc, label='Training Accuracy')
+plt.plot(val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.ylabel('Accuracy')
+plt.ylim([min(plt.ylim()),1])
+plt.title('Training and Validation Accuracy')
+plt.subplot(2, 1, 2)
+plt.plot(loss, label='Training Loss')
+plt.plot(val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.ylabel('Cross Entropy')
+plt.title('Training and Validation Loss')
+plt.xlabel('epoch')
+plt.show()
+#if all the validation accuracy values are equal in an LSTM RNN model. It could be that the model has reached a plateau in its learning process
